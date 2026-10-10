@@ -25,7 +25,7 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v6
         with:
-          repository: miaizhe/Kernel_oppo_sm7325_Reno10
+          repository: one899/Kernel_oneplus_8350_5.4.254bpf
           path: kernel/msm-5.4
           fetch-depth: 1
           ref: ee-v1
@@ -66,62 +66,23 @@ jobs:
           export ARCH="arm64"
           export SUBARCH="arm64"
           cd kernel/msm-5.4
-          # ==========================================================
-          # ★ 充电修复（同步自 9RT eevdf 树的诊断结论）
-          # 问题: 电池电量/充电读不到 -> /sys/class/power_supply 为空
-          # 根因: drivers/power/Makefile 走 oplus/ 分支, 而 DTB 需要 oplus_chg/
-          #   ifeq (CONFIG_OPLUS_CHG_OP9RT_PMIC_VOOCPHY, y) -> oplus/
-          #   else ifeq (CONFIG_CHG_FOR_OP9_PRO, y)         -> oplus_chg/
-          # 而 CONFIG_OPLUS_CHG_OP9RT_PMIC_VOOCPHY 是 default y 的有效符号,
-          # scripts/config -d 关不掉(olddefconfig 会设回 y), 所以直接改 Makefile。
-          #
-          # oplus_chg/ 里正是 DTB 需要的驱动:
-          #   oplus_chg_intf.o / oplus_chg_gki.o / oplus_warp.o
-          #   charger_ic/oplus_hl7227.o / charger_ic/oplus_pm8350b.o
-          #   wireless_ic/oplus_p9415.o / gauge_ic/oplus_bq27541.o / warp_ic/oplus_rk826.o
-          # ==========================================================
-          echo "=== 充电修复: drivers/power/Makefile -> oplus_chg/ ==="
-          set +e
-          cp drivers/power/Makefile /tmp/power_makefile.bak
-          sed -i 's|+= oplus/$|+= oplus_chg/|' drivers/power/Makefile
-          cat drivers/power/Makefile
+          # 充电修复已合入 ee-v1 源码, 这里只做校验
+          echo "=== 校验充电修复是否在源码里 ==="
           if grep -q "oplus_chg/" drivers/power/Makefile; then
-            echo "  OK: oplus_chg/ 已进入 Makefile"
+            echo "  OK: drivers/power/Makefile 指向 oplus_chg/"
           else
-            echo "  FAIL: oplus_chg/ 未加入"; exit 1
+            echo "  FAIL: drivers/power/Makefile 未指向 oplus_chg/"; exit 1
           fi
-          echo ""
-          echo "=== 充电修复: 源码级定义 OPLUS_CHG_OP_DEF ==="
-          # oplus_charger.h 里 15 处 #ifdef OPLUS_CHG_OP_DEF 依赖它:
-          #   CHG_VUSBIN_VOL_THR / charger_exist_delay / usb_chg_disable
-          #   disconnect_vbus / oplus_usb_type / reconnect_count ...
-          # ccflags-y 对复合对象不生效, 所以直接改源码。
-          cd drivers/power/oplus_chg
-          for f in $(find . -name '*.h' -o -name '*.c'); do
-            if ! grep -q 'define OPLUS_CHG_OP_DEF' "$f" 2>/dev/null; then
-              sed -i '1i #ifndef OPLUS_CHG_OP_DEF\n#define OPLUS_CHG_OP_DEF 1\n#endif' "$f"
-            fi
-          done
-          cd - >/dev/null 2>&1
-          n=$(grep -rl 'define OPLUS_CHG_OP_DEF' drivers/power/oplus_chg/ 2>/dev/null | wc -l || echo 0)
-          echo "  已处理文件数: $n"
-          if [ "$n" -lt 5 ]; then echo "  FAIL: 处理文件太少"; exit 1; fi
-          echo "  OK: 宏已在源码中定义"
-          echo ""
-          echo "=== 充电修复: 删除重复的 oplus_chg_voter.o ==="
-          # oplus_chg/oplus_chg_voter.c 和 qcom/pmic-voter.c 导出完全同名的符号
-          # (lock_votable/unlock_votable/vote/create_votable/... 共 20 个)
-          # 本 defconfig 是 CONFIG_QTI_BATTERY_CHARGER=y, 两份都进 vmlinux -> duplicate symbol
-          # 两份符号完全一致, 删掉 OPLUS 那份即可。
-          sed -i '/oplus_chg_voter\.o/d' drivers/power/oplus_chg/Makefile
+          if grep -q "define OPLUS_CHG_OP_DEF" drivers/power/oplus_chg/oplus_charger.h; then
+            echo "  OK: OPLUS_CHG_OP_DEF 已定义"
+          else
+            echo "  FAIL: OPLUS_CHG_OP_DEF 缺失"; exit 1
+          fi
           if grep -q "oplus_chg_voter" drivers/power/oplus_chg/Makefile; then
-            echo "  FAIL: 未删除"; exit 1
+            echo "  FAIL: oplus_chg_voter.o 未移除"; exit 1
           else
             echo "  OK: oplus_chg_voter.o 已移除"
           fi
-          echo ""
-          set -e
-          echo "=== 充电修复完成, 开始编译 ==="
           rm -r KernelSU
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
           make O=out CC="clang" LLVM=1 Reno10-Docker_defconfig  
