@@ -66,7 +66,7 @@ jobs:
           export ARCH="arm64"
           export SUBARCH="arm64"
           cd kernel/msm-5.4
-          # 充电修复已合入 9p 分支源码, 这里只做校验
+          # 充电修复已合入 ee-v1 源码, 这里只做校验
           echo "=== 校验充电修复是否在源码里 ==="
           if grep -q "oplus_chg/" drivers/power/Makefile; then
             echo "  OK: drivers/power/Makefile 指向 oplus_chg/"
@@ -79,14 +79,11 @@ jobs:
             echo "  FAIL: OPLUS_CHG_OP_DEF 缺失"; exit 1
           fi
           if grep -q "oplus_chg_voter" drivers/power/oplus_chg/Makefile; then
-            echo "  OK: oplus_chg_voter.o 保留"
+            echo "  FAIL: oplus_chg_voter.o 未移除"; exit 1
           else
-            echo "  FAIL: oplus_chg_voter.o 被删了!"
-            echo "        本树 drivers/power/supply/qcom/ 不编译, 删掉它会导致"
-            echo "        vote/create_votable/find_votable 等全部 undefined symbol"
-            exit 1
+            echo "  OK: oplus_chg_voter.o 已移除"
           fi
-          rm -r KernelSU
+          rm -rf KernelSU
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
           make O=out CC="clang" LLVM=1 Reno10-Docker_defconfig  
           ./scripts/config --file out/.config \
