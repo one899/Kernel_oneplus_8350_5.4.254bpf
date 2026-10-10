@@ -68,6 +68,27 @@ jobs:
           export ARCH="arm64"
           export SUBARCH="arm64"
           cd kernel/msm-5.4
+          # ==========================================================
+          # Docker / Droidspaces 补丁
+          # 本 workflow 叫 Docker, 但原本没有任何补丁步骤 —— 只有 defconfig 里的
+          # CONFIG_DOCKER_* / CONFIG_DOCKER_OVERLAY_FS 等, 而它们在源码里没有定义,
+          # 属于空转。这里补上和 9RT 树完全相同的 Docker 补丁。
+          # ==========================================================
+          echo "添加docker补丁中"
+          rm fs/overlayfs/util.c
+          curl -LSs "https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/util.c" -o fs/overlayfs/util.c
+          rm kernel/module.c
+          curl -LSs "https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/module.c" -o kernel/module.c
+          rm include/linux/sched/user.h
+          curl -LSs https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/refs/heads/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch -o 001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch
+          curl -LSs "https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/user.h" -o include/linux/sched/user.h
+          patch -p1 < 001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch
+          echo "添加docker补丁完成"
+          echo "--- 校验 Docker 补丁 ---"
+          ls -la fs/overlayfs/util.c kernel/module.c include/linux/sched/user.h
+          grep -n -A3 'bad_version:' kernel/module.c | head -6
+          grep -n 'mq_bytes' include/linux/sched/user.h | head -4
+          echo "--- 校验结束 ---"
           # 充电修复已合入 9p 分支源码, 这里只做校验
           echo "=== 校验充电修复是否在源码里 ==="
           if grep -q "oplus_chg/" drivers/power/Makefile; then
@@ -94,6 +115,28 @@ jobs:
           ./scripts/config --file out/.config \
             -d CONFIG_KSU_TRACEPOINT_HOOK \
             -e CONFIG_KSU_MANUAL_HOOK
+          # ==== Enable namespaces for Droidspaces ====
+          ./scripts/config --file out/.config \
+            -e CONFIG_USER_NS \
+            -e CONFIG_PID_NS \
+            -e CONFIG_IPC_NS \
+            -e CONFIG_CHECKPOINT_RESTORE \
+            -e CONFIG_SYSVIPC \
+            -e CONFIG_KPROBES \
+            -e CONFIG_TMPFS_POSIX_ACL \
+            -e CONFIG_TMPFS_XATTR
+          # ==========================================
+          ./scripts/config --file out/.config --enable CONFIG_CGROUP_PIDS
+          ./scripts/config --file out/.config --enable CONFIG_CGROUP_IO
+          ./scripts/config --file out/.config --enable CONFIG_CPUSETS
+          ./scripts/config --file out/.config --enable CONFIG_MEMCG
+          ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS
+          ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS_MOUNT
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS_REDIRECT_DIR
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS_INDEX
+          echo "=== Docker 相关配置核对 ==="
+          grep -E 'CONFIG_(USER_NS|PID_NS|IPC_NS|NET_NS|UTS_NS|CHECKPOINT_RESTORE|SYSVIPC|TMPFS_POSIX_ACL|TMPFS_XATTR|CGROUP_PIDS|CPUSETS|MEMCG|DEVTMPFS|OVERLAY_FS)' out/.config | sort
           make O=out CC="clang" LLVM=1 -j$(nproc)
       - name: Package with AnyKernel3
         run: |
