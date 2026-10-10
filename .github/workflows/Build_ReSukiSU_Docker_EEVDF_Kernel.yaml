@@ -28,7 +28,7 @@ jobs:
           repository: one899/Kernel_oneplus_8350_5.4.254bpf
           path: kernel/msm-5.4
           fetch-depth: 1
-          ref: ee-v1
+          ref: 9p
 
       - name: Checkout Modules Source
         uses: actions/checkout@v6
