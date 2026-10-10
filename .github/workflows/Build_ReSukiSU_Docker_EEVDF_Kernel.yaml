@@ -11,6 +11,8 @@ jobs:
   build:
     name: Compile Kernel
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
 
     steps:
       - name: Configure Fast APT Mirror
