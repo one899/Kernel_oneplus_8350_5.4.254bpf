@@ -1,0 +1,233 @@
+name: Build OnePlus9 NEXT Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_ref:
+        description: '要编译的内核源码分支'
+        required: false
+        default: '9p'
+        type: string
+  # 不挂 cron: 这条线手动触发, 避免和 Reno10 线的 release tag 抢
+
+jobs:
+  build:
+    name: Compile Kernel
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Configure Fast APT Mirror
+        uses: vegardit/fast-apt-mirror.sh@v1
+
+      - name: Make Build Environment
+        timeout-minutes: 10
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y kmod cpio binutils cmake binutils-aarch64-linux-gnu git wget pahole automake flex lzop bison gperf build-essential zip curl zlib1g-dev libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip dwarves device-tree-compiler python3 ccache git-lfs gnupg imagemagick libelf-dev libncurses5-dev libsdl1.2-dev gpart fuse2fs e2fsck-static icu-doc rsync adb fastboot libstdc++6 python-is-python3 gcc-aarch64-linux-gnu 
+          mkdir -p kernel
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v6
+        with:
+          repository: one899/Kernel_oneplus_8350_5.4.254bpf
+          path: kernel/msm-5.4
+          fetch-depth: 1
+          # 可用 workflow_dispatch 的 kernel_ref 指定；未指定则默认 9p
+          ref: ${{ inputs.kernel_ref || '9p' }}
+
+      - name: Checkout Modules Source
+        uses: actions/checkout@v6
+        with:
+          # 指向 fork: 9RT 电池健康修复已打进这个 vendor 仓
+          repository: one899/android_kernel_modules_and_devicetree_oppo_sm7325
+          path: temp_modules
+          ref: oppo/sm7325_v_15.0.0_reno10
+
+      - name: Prepare Compiler
+        run: |
+          mkdir -p compiler
+          cd compiler
+          
+          curl -fL "https://github.com/Rancemxn/android_kernel_oppo_sm7325/releases/download/BuildTool/linux-x86-refs_heads_llvm-r383902b-clang-r383902.tar.gz" -o clang-r383902.tar.gz --connect-timeout 30 --retry 5 --retry-delay 5
+          mkdir -p clang-bin
+          tar -xzf clang-r383902.tar.gz -C clang-bin
+          rm clang-r383902.tar.gz
+      - name: Handle Dependencies
+        run: |
+          mv temp_modules/vendor ./vendor
+          mv temp_modules/device ./device
+          rm -rf temp_modules
+      - name: Set Release Info & Custom Version
+        run: |
+          BUILD_DATE=$(date +%Y%m%d)
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+
+      - name: Compile Kernel
+        run: |
+          export PATH="$(pwd)/compiler/clang-bin/bin:$PATH"
+          export CROSS_COMPILE="aarch64-linux-android-"
+          export CROSS_COMPILE_ARM32="arm-linux-androideabi-"
+          export CLANG_TRIPLE="aarch64-linux-gnu-"
+          export CLANG_PATH="$(pwd)/compiler/clang-bin/bin"
+          export ARCH="arm64"
+          export SUBARCH="arm64"
+          cd kernel/msm-5.4
+          # ==========================================================
+          # Docker / Droidspaces 补丁
+          # 本 workflow 叫 Docker, 但原本没有任何补丁步骤 —— 只有 defconfig 里的
+          # CONFIG_DOCKER_* / CONFIG_DOCKER_OVERLAY_FS 等, 而它们在源码里没有定义,
+          # 属于空转。这里补上和 9RT 树完全相同的 Docker 补丁。
+          # ==========================================================
+          echo "添加docker补丁中"
+          rm fs/overlayfs/util.c
+          curl -LSs "https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/util.c" -o fs/overlayfs/util.c
+          rm kernel/module.c
+          curl -LSs "https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/module.c" -o kernel/module.c
+          rm include/linux/sched/user.h
+          curl -LSs https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/refs/heads/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch -o 001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch
+          curl -LSs "https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/user.h" -o include/linux/sched/user.h
+          # patch 幂等化: ee-v1 底板可能已经自带这个补丁, 直接 patch 会因
+          # 'Reversed (or previously applied) patch detected' 交互式提问而中止 (bash -e)
+          if patch -p1 --dry-run -N -r - < 001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch >/dev/null 2>&1; then
+            patch -p1 -N -r - < 001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch
+            echo "  SYSVIPC kabi 补丁: 本次已应用"
+          else
+            echo "  SYSVIPC kabi 补丁: 已存在或无法应用, 跳过 (不中止)"
+          fi
+          rm -f 001.GKI-below-6.12-fix_sysvipc_kabi_3_4_5.patch.rej include/linux/sched.h.rej 2>/dev/null || true
+          echo "添加docker补丁完成"
+          echo "--- 校验 Docker 补丁 ---"
+          ls -la fs/overlayfs/util.c kernel/module.c include/linux/sched/user.h
+          grep -n -A3 'bad_version:' kernel/module.c | head -6
+          grep -n 'mq_bytes' include/linux/sched/user.h | head -4
+          echo "--- SYSVIPC kabi (include/linux/sched.h) ---"
+          grep -n 'mq_bytes\|ANDROID_KABI_USE' include/linux/sched.h | head -5 || true
+          echo "--- 校验结束 ---"
+          # 充电修复已合入 9p 分支源码, 这里只做校验
+          echo "=== 校验充电修复是否在源码里 ==="
+          if grep -q "oplus_chg/" drivers/power/Makefile; then
+            echo "  OK: drivers/power/Makefile 指向 oplus_chg/"
+          else
+            echo "  FAIL: drivers/power/Makefile 未指向 oplus_chg/"; exit 1
+          fi
+          if grep -q "define OPLUS_CHG_OP_DEF" drivers/power/oplus_chg/oplus_charger.h; then
+            echo "  OK: OPLUS_CHG_OP_DEF 已定义"
+          else
+            echo "  FAIL: OPLUS_CHG_OP_DEF 缺失"; exit 1
+          fi
+          if grep -q "oplus_chg_voter" drivers/power/oplus_chg/Makefile; then
+            echo "  OK: oplus_chg_voter.o 保留"
+          else
+            echo "  FAIL: oplus_chg_voter.o 被删了!"
+            echo "        本树 drivers/power/supply/qcom/ 不编译, 删掉它会导致"
+            echo "        vote/create_votable/find_votable 等全部 undefined symbol"
+            exit 1
+          fi
+          rm -rf KernelSU
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+          make O=out CC="clang" LLVM=1 Reno10-Docker_defconfig  
+          ./scripts/config --file out/.config \
+            -d CONFIG_KSU_TRACEPOINT_HOOK \
+            -e CONFIG_KSU_MANUAL_HOOK
+          # ==== Enable namespaces for Droidspaces ====
+          ./scripts/config --file out/.config \
+            -e CONFIG_USER_NS \
+            -e CONFIG_PID_NS \
+            -e CONFIG_IPC_NS \
+            -e CONFIG_CHECKPOINT_RESTORE \
+            -e CONFIG_SYSVIPC \
+            -e CONFIG_KPROBES \
+            -e CONFIG_TMPFS_POSIX_ACL \
+            -e CONFIG_TMPFS_XATTR
+          # ==========================================
+          ./scripts/config --file out/.config --enable CONFIG_CGROUP_PIDS
+          ./scripts/config --file out/.config --enable CONFIG_CGROUP_IO
+          ./scripts/config --file out/.config --enable CONFIG_CPUSETS
+          ./scripts/config --file out/.config --enable CONFIG_MEMCG
+          ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS
+          ./scripts/config --file out/.config --enable CONFIG_DEVTMPFS_MOUNT
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS_REDIRECT_DIR
+          ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS_INDEX
+          echo "=== Docker 相关配置核对 ==="
+          grep -E 'CONFIG_(USER_NS|PID_NS|IPC_NS|NET_NS|UTS_NS|CHECKPOINT_RESTORE|SYSVIPC|TMPFS_POSIX_ACL|TMPFS_XATTR|CGROUP_PIDS|CPUSETS|MEMCG|DEVTMPFS|OVERLAY_FS)' out/.config | sort
+          # ==== Docker 补丁 之后、编译之前：固定内核版本串 ====
+          # 目标: 5.4.254-ColorArchive-NEXT-OnePlus9-<当天编译日期>
+          # 必须【无空格】: 本树 CONFIG_MODVERSIONS=y 时，
+          # kernel/module.c 的 same_magic() 会 strcspn(amagic, " ") 跳过第一个
+          # 空格再比较，UTS_RELEASE 里带空格会让所有 vendor 模块 vermagic 对不上、
+          # 全部拒绝加载 -> 卡开机。
+          # Makefile 里原本有 EXTRAVERSION = -KernelSU-LXC/Docker，会拼进
+          # KERNELVERSION，所以先清空它，整个后缀交给 setlocalversion。
+          sed -i 's/^EXTRAVERSION = .*/EXTRAVERSION =/' Makefile
+          KREL_DATE=$(date +%y.%m.%d)
+          KREL="5.4.254-ColorArchive-NEXT-OnePlus9-${KREL_DATE}"
+          case "$KREL" in
+            *" "*) echo "FATAL: 内核版本串含空格: $KREL"; exit 1 ;;
+          esac
+          printf '#!/bin/sh\necho "%s"\n' "-ColorArchive-NEXT-OnePlus9-${KREL_DATE}" > scripts/setlocalversion
+          chmod +x scripts/setlocalversion
+          ./scripts/config --file out/.config --set-str LOCALVERSION ""
+          ./scripts/config --file out/.config -d LOCALVERSION_AUTO
+          echo "内核版本将为: $KREL"
+          # =====================================================
+          make O=out CC="clang" LLVM=1 -j$(nproc)
+      - name: Package with AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          sed -i '584s|ui_print " " "Done!";|ui_print " "; ui_print "感谢支持芜夕wuxi内核，刷入完成！"; ui_print "祝你玩的愉快！";|' AnyKernel3/META-INF/com/google/android/update-binary
+          
+          cp kernel/msm-5.4/out/arch/arm64/boot/Image AnyKernel3/
+          mkdir -p AnyKernel3/modules/vendor/lib/modules
+          find kernel/msm-5.4/out/ -name "*.ko" -exec cp {} AnyKernel3/modules/vendor/lib/modules/ \;
+          
+          cd AnyKernel3
+          rm anykernel.sh
+          wget https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/anykernel.sh
+          zip -r9 ../ReSukiSU-OnePlus9-NEXT-Docker-${{ env.BUILD_DATE }}.zip * -x .git* README.md *placeholder
+
+      - name: Pack WithoutTWRP Boot Image
+        run: |
+          pwd
+          mkdir -p boot_pack
+          cd boot_pack
+          wget https://raw.githubusercontent.com/miaizhe/magiskboot-linux/refs/heads/main/x86_64/magiskboot
+          chmod +x magiskboot
+          curl -fL "https://github.com/miaizhe/Kernel_oppo_sm7325_Reno10/releases/download/boot/boot_a.img" -o boot_origin.img
+          ./magiskboot unpack boot_origin.img
+          if [ ! -f "../kernel/msm-5.4/out/arch/arm64/boot/Image" ]; then
+            echo "错误：编译出的 Image 文件不存在，请检查编译步骤！"
+            exit 1
+          fi
+          cp ../kernel/msm-5.4/out/arch/arm64/boot/Image kernel
+          ./magiskboot repack boot_origin.img ../boot-ReSukiSU-OnePlus9-NEXT-WithoutTWRP-Docker-${{ env.BUILD_DATE }}.img
+          pwd
+          cd ..
+          pwd
+
+      - name: Upload Flashable Kernel
+        uses: actions/upload-artifact@v6
+        with:
+          name: ReSukiSU_OnePlus9_NEXT_Docker.img
+          path: |
+            boot-ReSukiSU-OnePlus9-NEXT-WithoutTWRP-Docker-${{ env.BUILD_DATE }}.img
+            ReSukiSU-OnePlus9-NEXT-Docker-${{ env.BUILD_DATE }}.zip
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: NEXT-${{ env.BUILD_DATE }}
+          name: OnePlus9 NEXT Kernel (${{ env.BUILD_DATE }})
+          body: |
+            - 产品线: **OnePlus9 NEXT** (5.4.254)
+            - 编译日期: ${{ env.BUILD_DATE }}
+            - 核心版本: 5.4.254
+            - 包含功能: ReSukiSU,KernelSU-Next
+            - 欢迎刷入芜夕wuxi的内核！祝你玩的愉快！
+            - 文件：分为带SuSFS的和不带SukiSU的，zip为ak3包，img文件为打包好的镜像，Docker为带Docker的,test为测试版
+          files: |
+              ReSukiSU-OnePlus9-NEXT-Docker-${{ env.BUILD_DATE }}.zip
+              boot-ReSukiSU-OnePlus9-NEXT-WithoutTWRP-Docker-${{ env.BUILD_DATE }}.img
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
