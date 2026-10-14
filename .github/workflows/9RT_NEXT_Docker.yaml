@@ -138,6 +138,31 @@ jobs:
           echo "Using KernelSU-Next tag: $KSU_TAG"
           curl -fLSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" -o ksu_setup.sh
           bash ksu_setup.sh "$KSU_TAG"
+          # ---- 以下兼容处理整块扒自 295 的 build-root job ----
+          # KernelSU-Next 的 next/legacy 源码和本树有几处对不上, 295 线是这样绕过的
+          sed -i 's|pr_info("handle_setresuid|pr_debug("handle_setresuid|' drivers/kernelsu/hook/setuid_hook.c 2>/dev/null || true
+          curl -LSs "https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/mainline/Patches/syscall_hook_patches.sh" -o syscall_hook_patches.sh
+          chmod +x syscall_hook_patches.sh
+          bash syscall_hook_patches.sh
+          # 关键: ksu_handle_devpts 的调用点在 drivers/tty/pty.c, 而 legacy 源码没
+          # 提供这个函数 -> ld.lld: undefined symbol: ksu_handle_devpts。
+          # 295 的做法是直接把这行调用删掉。
+          sed -i '/ksu_handle_devpts/d' drivers/tty/pty.c
+          sed -i 's/obj-$(CONFIG_KPROBES)/obj-y/g' kernel/Makefile
+          echo "正在用命令重构并清空报错的 selinux_hide.c..."
+          cat << 'EOF' > drivers/kernelsu/feature/selinux_hide.c
+          #include <linux/types.h>
+          #include <linux/kernel.h>
+          bool ksu_selinux_hide_status_get(void) { return false; }
+          void ksu_selinux_hide_status_set(bool enable) { }
+          int ksu_selinux_hide_init(void) { return 0; }
+          void ksu_selinux_hide_exit(void) { }
+          bool ksu_selinux_hide_enable(void) { return true; }
+          void ksu_selinux_hide_drop_backup_if_unused(void) { }
+          void ksu_selinux_hide_handle_second_stage(void) { }
+          void ksu_selinux_hide_handle_post_fs_data(void) { }
+          EOF
+          # ---- 扒自 295 的兼容块结束 ----
           make O=out CC="clang" LLVM=1 Reno10-Docker_defconfig  
           ./scripts/config --file out/.config \
             -d CONFIG_KSU_TRACEPOINT_HOOK \
