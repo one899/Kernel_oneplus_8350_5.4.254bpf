@@ -218,7 +218,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: 9RT-NEXT-${{ env.BUILD_DATE }}
-          name: OnePlus9 NEXT Kernel KernelSU-Next (${{ env.BUILD_DATE }})
+          name: 9RT NEXT Kernel KernelSU-Next (${{ env.BUILD_DATE }})
           body: |
             - 产品线: **9RT NEXT** (5.4.254)
             - 编译日期: ${{ env.BUILD_DATE }}
@@ -439,7 +439,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: 9RT-NEXT-${{ env.BUILD_DATE }}
-          name: OnePlus9 NEXT Kernel ReSukiSU (${{ env.BUILD_DATE }})
+          name: 9RT NEXT Kernel ReSukiSU (${{ env.BUILD_DATE }})
           body: |
             - 产品线: **9RT NEXT** (5.4.254)
             - 编译日期: ${{ env.BUILD_DATE }}
@@ -658,7 +658,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: 9RT-NEXT-${{ env.BUILD_DATE }}
-          name: OnePlus9 NEXT Kernel no-root (${{ env.BUILD_DATE }})
+          name: 9RT NEXT Kernel no-root (${{ env.BUILD_DATE }})
           body: |
             - 产品线: **9RT NEXT** (5.4.254)
             - 编译日期: ${{ env.BUILD_DATE }}
