@@ -2,6 +2,12 @@ name: Build ReSukiSU Docker EEVDF Kernel
 
 on:
   workflow_dispatch:
+    inputs:
+      kernel_ref:
+        description: '要编译的内核源码分支'
+        required: false
+        default: '9p'
+        type: string
   schedule:
     - cron: '0 0 * * 0'
     - cron: '0 12 * * 5'
@@ -30,7 +36,8 @@ jobs:
           repository: one899/Kernel_oneplus_8350_5.4.254bpf
           path: kernel/msm-5.4
           fetch-depth: 1
-          ref: 9p
+          # 可用 workflow_dispatch 的 kernel_ref 指定；未指定则默认 9p
+          ref: ${{ inputs.kernel_ref || '9p' }}
 
       - name: Checkout Modules Source
         uses: actions/checkout@v6
