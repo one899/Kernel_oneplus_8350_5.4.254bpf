@@ -147,6 +147,26 @@ jobs:
           ./scripts/config --file out/.config --enable CONFIG_OVERLAY_FS_INDEX
           echo "=== Docker 相关配置核对 ==="
           grep -E 'CONFIG_(USER_NS|PID_NS|IPC_NS|NET_NS|UTS_NS|CHECKPOINT_RESTORE|SYSVIPC|TMPFS_POSIX_ACL|TMPFS_XATTR|CGROUP_PIDS|CPUSETS|MEMCG|DEVTMPFS|OVERLAY_FS)' out/.config | sort
+          # ==== Docker 补丁 之后、编译之前：固定内核版本串 ====
+          # 目标: 5.4.254-ColorArchive-NEXT-OnePlus9-<当天编译日期>
+          # 必须【无空格】: 本树 CONFIG_MODVERSIONS=y 时，
+          # kernel/module.c 的 same_magic() 会 strcspn(amagic, " ") 跳过第一个
+          # 空格再比较，UTS_RELEASE 里带空格会让所有 vendor 模块 vermagic 对不上、
+          # 全部拒绝加载 -> 卡开机。
+          # Makefile 里原本有 EXTRAVERSION = -KernelSU-LXC/Docker，会拼进
+          # KERNELVERSION，所以先清空它，整个后缀交给 setlocalversion。
+          sed -i 's/^EXTRAVERSION = .*/EXTRAVERSION =/' Makefile
+          KREL_DATE=$(date +%y.%m.%d)
+          KREL="5.4.254-ColorArchive-NEXT-OnePlus9-${KREL_DATE}"
+          case "$KREL" in
+            *" "*) echo "FATAL: 内核版本串含空格: $KREL"; exit 1 ;;
+          esac
+          printf '#!/bin/sh\necho "%s"\n' "-ColorArchive-NEXT-OnePlus9-${KREL_DATE}" > scripts/setlocalversion
+          chmod +x scripts/setlocalversion
+          ./scripts/config --file out/.config --set-str LOCALVERSION ""
+          ./scripts/config --file out/.config -d LOCALVERSION_AUTO
+          echo "内核版本将为: $KREL"
+          # =====================================================
           make O=out CC="clang" LLVM=1 -j$(nproc)
       - name: Package with AnyKernel3
         run: |
