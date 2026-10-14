@@ -104,25 +104,30 @@ jobs:
           echo "--- SYSVIPC kabi (include/linux/sched.h) ---"
           grep -n 'mq_bytes\|ANDROID_KABI_USE' include/linux/sched.h | head -5 || true
           echo "--- 校验结束 ---"
-          # 充电修复已合入 9p 分支源码, 这里只做校验
-          echo "=== 校验充电修复是否在源码里 ==="
-          if grep -q "oplus_chg/" drivers/power/Makefile; then
-            echo "  OK: drivers/power/Makefile 指向 oplus_chg/"
+          # ==========================================================
+          # 充电路径校验（9RT / ee-v1 走 vendor 栈）
+          #
+          # ee-v1 的 drivers/power/Makefile 两个分支都指向 oplus/，也就是
+          # vendor/oplus/kernel/charger —— 和 9p(内核自带 oplus_chg/) 相反。
+          # 所以不能套用 9p 那套「必须指向 oplus_chg/ + 必须有 OPLUS_CHG_OP_DEF」
+          # 的校验，那在 ee-v1 上必然失败。
+          # ==========================================================
+          echo "=== 校验充电路径 (9RT: vendor 栈) ==="
+          if grep -q 'oplus/' drivers/power/Makefile; then
+            echo "  OK: drivers/power/Makefile 走 oplus/ (vendor 栈)"
           else
-            echo "  FAIL: drivers/power/Makefile 未指向 oplus_chg/"; exit 1
+            echo "  FAIL: drivers/power/Makefile 没有 oplus/ 分支"; exit 1
           fi
-          if grep -q "define OPLUS_CHG_OP_DEF" drivers/power/oplus_chg/oplus_charger.h; then
-            echo "  OK: OPLUS_CHG_OP_DEF 已定义"
+          VCFG="../../vendor/oplus/kernel/charger/oplus_configfs.c"
+          if [ -f "$VCFG" ]; then
+            echo "  OK: vendor 充电源码在位"
+            if grep -q 'oplus_batt_soh_fallback' "$VCFG"; then
+              echo "  OK: vendor 已带 9RT 电池健康修复"
+            else
+              echo "  WARN: vendor 没有电池健康修复, battery_soh 仍会报原始值"
+            fi
           else
-            echo "  FAIL: OPLUS_CHG_OP_DEF 缺失"; exit 1
-          fi
-          if grep -q "oplus_chg_voter" drivers/power/oplus_chg/Makefile; then
-            echo "  OK: oplus_chg_voter.o 保留"
-          else
-            echo "  FAIL: oplus_chg_voter.o 被删了!"
-            echo "        本树 drivers/power/supply/qcom/ 不编译, 删掉它会导致"
-            echo "        vote/create_votable/find_votable 等全部 undefined symbol"
-            exit 1
+            echo "  FAIL: 找不到 $VCFG (vendor 没挂上?)"; exit 1
           fi
           rm -rf KernelSU
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash
@@ -325,25 +330,30 @@ jobs:
           echo "--- SYSVIPC kabi (include/linux/sched.h) ---"
           grep -n 'mq_bytes\|ANDROID_KABI_USE' include/linux/sched.h | head -5 || true
           echo "--- 校验结束 ---"
-          # 充电修复已合入 9p 分支源码, 这里只做校验
-          echo "=== 校验充电修复是否在源码里 ==="
-          if grep -q "oplus_chg/" drivers/power/Makefile; then
-            echo "  OK: drivers/power/Makefile 指向 oplus_chg/"
+          # ==========================================================
+          # 充电路径校验（9RT / ee-v1 走 vendor 栈）
+          #
+          # ee-v1 的 drivers/power/Makefile 两个分支都指向 oplus/，也就是
+          # vendor/oplus/kernel/charger —— 和 9p(内核自带 oplus_chg/) 相反。
+          # 所以不能套用 9p 那套「必须指向 oplus_chg/ + 必须有 OPLUS_CHG_OP_DEF」
+          # 的校验，那在 ee-v1 上必然失败。
+          # ==========================================================
+          echo "=== 校验充电路径 (9RT: vendor 栈) ==="
+          if grep -q 'oplus/' drivers/power/Makefile; then
+            echo "  OK: drivers/power/Makefile 走 oplus/ (vendor 栈)"
           else
-            echo "  FAIL: drivers/power/Makefile 未指向 oplus_chg/"; exit 1
+            echo "  FAIL: drivers/power/Makefile 没有 oplus/ 分支"; exit 1
           fi
-          if grep -q "define OPLUS_CHG_OP_DEF" drivers/power/oplus_chg/oplus_charger.h; then
-            echo "  OK: OPLUS_CHG_OP_DEF 已定义"
+          VCFG="../../vendor/oplus/kernel/charger/oplus_configfs.c"
+          if [ -f "$VCFG" ]; then
+            echo "  OK: vendor 充电源码在位"
+            if grep -q 'oplus_batt_soh_fallback' "$VCFG"; then
+              echo "  OK: vendor 已带 9RT 电池健康修复"
+            else
+              echo "  WARN: vendor 没有电池健康修复, battery_soh 仍会报原始值"
+            fi
           else
-            echo "  FAIL: OPLUS_CHG_OP_DEF 缺失"; exit 1
-          fi
-          if grep -q "oplus_chg_voter" drivers/power/oplus_chg/Makefile; then
-            echo "  OK: oplus_chg_voter.o 保留"
-          else
-            echo "  FAIL: oplus_chg_voter.o 被删了!"
-            echo "        本树 drivers/power/supply/qcom/ 不编译, 删掉它会导致"
-            echo "        vote/create_votable/find_votable 等全部 undefined symbol"
-            exit 1
+            echo "  FAIL: 找不到 $VCFG (vendor 没挂上?)"; exit 1
           fi
           rm -rf KernelSU
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
@@ -546,30 +556,32 @@ jobs:
           echo "--- SYSVIPC kabi (include/linux/sched.h) ---"
           grep -n 'mq_bytes\|ANDROID_KABI_USE' include/linux/sched.h | head -5 || true
           echo "--- 校验结束 ---"
-          # 充电修复已合入 9p 分支源码, 这里只做校验
-          echo "=== 校验充电修复是否在源码里 ==="
-          if grep -q "oplus_chg/" drivers/power/Makefile; then
-            echo "  OK: drivers/power/Makefile 指向 oplus_chg/"
+          # ==========================================================
+          # 充电路径校验（9RT / ee-v1 走 vendor 栈）
+          #
+          # ee-v1 的 drivers/power/Makefile 两个分支都指向 oplus/，也就是
+          # vendor/oplus/kernel/charger —— 和 9p(内核自带 oplus_chg/) 相反。
+          # 所以不能套用 9p 那套「必须指向 oplus_chg/ + 必须有 OPLUS_CHG_OP_DEF」
+          # 的校验，那在 ee-v1 上必然失败。
+          # ==========================================================
+          echo "=== 校验充电路径 (9RT: vendor 栈) ==="
+          if grep -q 'oplus/' drivers/power/Makefile; then
+            echo "  OK: drivers/power/Makefile 走 oplus/ (vendor 栈)"
           else
-            echo "  FAIL: drivers/power/Makefile 未指向 oplus_chg/"; exit 1
+            echo "  FAIL: drivers/power/Makefile 没有 oplus/ 分支"; exit 1
           fi
-          if grep -q "define OPLUS_CHG_OP_DEF" drivers/power/oplus_chg/oplus_charger.h; then
-            echo "  OK: OPLUS_CHG_OP_DEF 已定义"
+          VCFG="../../vendor/oplus/kernel/charger/oplus_configfs.c"
+          if [ -f "$VCFG" ]; then
+            echo "  OK: vendor 充电源码在位"
+            if grep -q 'oplus_batt_soh_fallback' "$VCFG"; then
+              echo "  OK: vendor 已带 9RT 电池健康修复"
+            else
+              echo "  WARN: vendor 没有电池健康修复, battery_soh 仍会报原始值"
+            fi
           else
-            echo "  FAIL: OPLUS_CHG_OP_DEF 缺失"; exit 1
-          fi
-          if grep -q "oplus_chg_voter" drivers/power/oplus_chg/Makefile; then
-            echo "  OK: oplus_chg_voter.o 保留"
-          else
-            echo "  FAIL: oplus_chg_voter.o 被删了!"
-            echo "        本树 drivers/power/supply/qcom/ 不编译, 删掉它会导致"
-            echo "        vote/create_votable/find_votable 等全部 undefined symbol"
-            exit 1
+            echo "  FAIL: 找不到 $VCFG (vendor 没挂上?)"; exit 1
           fi
           make O=out CC="clang" LLVM=1 Reno10-Docker_defconfig  
-          ./scripts/config --file out/.config \
-            -d CONFIG_KSU_TRACEPOINT_HOOK \
-            -e CONFIG_KSU_MANUAL_HOOK
           # ==== Enable namespaces for Droidspaces ====
           ./scripts/config --file out/.config \
             -e CONFIG_USER_NS \
