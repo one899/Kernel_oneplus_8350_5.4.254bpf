@@ -125,7 +125,14 @@ jobs:
             exit 1
           fi
           rm -rf KernelSU
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash
+          # KernelSU-Next 的 next 分支源码比这个 5.4 内核新：
+          # drivers/kernelsu/feature/sucompat.c 会 include <linux/pgtable.h>，
+          # 而 5.4 没有这个头文件 -> fatal error: 'linux/pgtable.h' file not found。
+          # 295 线的做法是先取 legacy tag 再交给 setup.sh，这里照做。
+          KSU_TAG=$(git ls-remote --tags --refs https://github.com/KernelSU-Next/KernelSU-Next 2>/dev/null | rev | cut -d/ -f1 | rev | grep legacy | sort -V | tail -n1)
+          echo "Using KernelSU-Next tag: $KSU_TAG"
+          curl -fLSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" -o ksu_setup.sh
+          bash ksu_setup.sh "$KSU_TAG"
           make O=out CC="clang" LLVM=1 Reno10-Docker_defconfig  
           ./scripts/config --file out/.config \
             -d CONFIG_KSU_TRACEPOINT_HOOK \
@@ -566,7 +573,21 @@ jobs:
             echo "        vote/create_votable/find_votable 等全部 undefined symbol"
             exit 1
           fi
+          # 254 树的 drivers/Kconfig 里有 source "drivers/kernelsu/Kconfig"，
+          # 所以 no-root 版本也不能省掉 KSU 源码，否则 defconfig 阶段直接
+          # can't open file "drivers/kernelsu/Kconfig" 退出。
+          # 放进去之后再用 CONFIG_KSU 关掉即可（obj-$(CONFIG_KSU) 自然不编译）。
+          rm -rf KernelSU
+          # KernelSU-Next 的 next 分支源码比这个 5.4 内核新：
+          # drivers/kernelsu/feature/sucompat.c 会 include <linux/pgtable.h>，
+          # 而 5.4 没有这个头文件 -> fatal error: 'linux/pgtable.h' file not found。
+          # 295 线的做法是先取 legacy tag 再交给 setup.sh，这里照做。
+          KSU_TAG=$(git ls-remote --tags --refs https://github.com/KernelSU-Next/KernelSU-Next 2>/dev/null | rev | cut -d/ -f1 | rev | grep legacy | sort -V | tail -n1)
+          echo "Using KernelSU-Next tag: $KSU_TAG"
+          curl -fLSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" -o ksu_setup.sh
+          bash ksu_setup.sh "$KSU_TAG"
           make O=out CC="clang" LLVM=1 Reno10-Docker_defconfig  
+          ./scripts/config --file out/.config -d CONFIG_KSU   # no-root: 源码在位但不编译
           # ==== Enable namespaces for Droidspaces ====
           ./scripts/config --file out/.config \
             -e CONFIG_USER_NS \
