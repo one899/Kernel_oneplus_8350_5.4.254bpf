@@ -35,7 +35,8 @@ jobs:
       - name: Checkout Modules Source
         uses: actions/checkout@v6
         with:
-          repository: oppo-source/android_kernel_modules_and_devicetree_oppo_sm7325
+          # 指向 fork: 9RT 电池健康修复已打进这个 vendor 仓
+          repository: one899/android_kernel_modules_and_devicetree_oppo_sm7325
           path: temp_modules
           ref: oppo/sm7325_v_15.0.0_reno10
 
