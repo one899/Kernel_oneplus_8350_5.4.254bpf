@@ -129,7 +129,7 @@ jobs:
           # drivers/kernelsu/feature/sucompat.c 会 include <linux/pgtable.h>，
           # 而 5.4 没有这个头文件 -> fatal error: 'linux/pgtable.h' file not found。
           # 295 线的做法是先取 legacy tag 再交给 setup.sh，这里照做。
-          KSU_TAG=$(git ls-remote --tags --refs https://github.com/KernelSU-Next/KernelSU-Next 2>/dev/null | rev | cut -d/ -f1 | rev | grep legacy | sort -V | tail -n1)
+          KSU_TAG=legacy
           echo "Using KernelSU-Next tag: $KSU_TAG"
           curl -fLSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" -o ksu_setup.sh
           bash ksu_setup.sh "$KSU_TAG"
@@ -607,7 +607,7 @@ jobs:
           # drivers/kernelsu/feature/sucompat.c 会 include <linux/pgtable.h>，
           # 而 5.4 没有这个头文件 -> fatal error: 'linux/pgtable.h' file not found。
           # 295 线的做法是先取 legacy tag 再交给 setup.sh，这里照做。
-          KSU_TAG=$(git ls-remote --tags --refs https://github.com/KernelSU-Next/KernelSU-Next 2>/dev/null | rev | cut -d/ -f1 | rev | grep legacy | sort -V | tail -n1)
+          KSU_TAG=legacy
           echo "Using KernelSU-Next tag: $KSU_TAG"
           curl -fLSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" -o ksu_setup.sh
           bash ksu_setup.sh "$KSU_TAG"
